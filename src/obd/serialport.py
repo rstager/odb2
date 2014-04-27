@@ -173,8 +173,126 @@ class SerialPort(object):
         self.port.flushOutput()
         return
 
+import socket
+class SerialPortWifi(SerialPort):
+    """A SerialPort variant which uses a wifi connection
+    
+    """
+    def __init__(self, identifier):
+        """
+        host -- the host address of device
+        port -- port number of device
+        """
+        (host,port)= identifier.split(":")
+        # SOCK_STREAM == a TCP socket
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #sock.setblocking(0)  # optional non-blocking
+        self.sock.connect((host, int(port)))
+        self.name = "[Wifi ELM327 from   %s : %s]" % (host,port)
+        self.name=identifier
+        self.interval = 2
+        self.timestamp = None
+        self.buffer=""
+        return
 
-class SerialPortRecorder(SerialPort):
+        
+    def write(self, str):
+        """Write the given string to the port"""
+        warn("write %r" % str)
+        self.sock.send(str)
+        return
+    
+    def read_until_string(self, string):
+        """Read from the port until the given string is detected
+        or the read times out, whichever comes first
+        """
+        while len(self.buffer)==0 or not string in self.buffer:
+            try:
+                self.buffer += self.sock.recv(16384)
+            except exception.Timeout as e:
+                raise exception.ReadTimeout
+        if string !="":
+            (result,self.buffer)=self.buffer.split(string,1)
+            result+=string
+        else:
+            result=self.buffer[0:1]
+            self.buffer=self.buffer[1:]
+        return result
+    
+#        MAX_READ_OVERRUN = 0.01
+#     def read_until_string(self, str):
+#         """Read from the port until the given string is detected
+#         or the read times out, whichever comes first.
+#         
+#         str -- the string to await
+#         
+#         Raises an IntervalTimeout exception if the polling interval
+#         expires without receiving any data.  Raises a ReadTimeout
+#         exception if the read timout expires before the given string
+#         is encountered.  See set_timeout for more details.
+#         """
+#         buffer = ""
+#         interval = self.interval
+#         try:
+#             while True:
+#                 remaining = self.timeout - time.time()
+#                 print remaining
+#                 if (remaining <= 0):
+#                     raise exception.ReadTimeout(response=buffer)
+#                 # make sure the read() doesn't go beyond the timeout
+#                 if remaining < interval and interval >= self.MAX_READ_OVERRUN:
+#                     interval = remaining / 2.0
+#                     self.sock.settimeout(interval)
+#                 # read() times out after the polling interval set by set_timeout()
+#                     c = self.sock.recv(1)
+#                 if len(c) == 0 and interval == self.interval:
+#                     # stop if the read timed out without data
+#                     raise exception.IntervalTimeout(response=buffer)
+#                 # FIXME: move 0x00 test to ELM327
+#                 if c == '\x00': continue  # per note on p.6 of ELM327 data sheet
+#                 buffer += c
+#                 if (buffer.endswith(str)):
+#                     break
+#         finally:
+#             # if we temporarily dialed down the port's timeout to avoid
+#             # galloping past the timeout, restore it to its previous value
+#             if interval != self.interval:
+#                 self.sock.settimeout(self.interval)
+# 
+#         return buffer
+    def get_baudrate(self):
+        """Return the currently configured baud rate."""
+        return 38400   
+    def set_baudrate(self, baud):
+        """Set (and log) the serial port baud rate"""
+        warn("set-baud %d" % baud)
+        return
+    
+    def set_timeout(self, timeout, interval=None):
+        """Set the timeout and polling interval for read
+        operations.  
+        """
+        self.timeout = time.time() + timeout
+        if interval == None:
+            interval = timeout
+        if interval != self.interval:
+            self.interval = interval
+            # requires reconfiguring the port on some platforms, so avoid unnecessary calls
+            self.sock.settimeout(interval)
+        return
+
+    def clear_rx_buffer(self):
+        """Clear the receive buffer"""
+        warn("clear rx")
+        self.buffer=""
+        return
+    
+    def clear_tx_buffer(self):
+        """Clear the transmission buffer"""
+        warn("clear tx")
+        return
+    
+class SerialPortRecorder(SerialPortWifi):
     """A SerialPort variant which records all activity to a file for
     subsequent review or playback.  See SerialPortPlayback as well.
     """
@@ -183,7 +301,7 @@ class SerialPortRecorder(SerialPort):
             to open the port; e.g., /dev/cu.1234, COM1, etc.
         filename -- the file to which to record serial port activity
         """
-        SerialPort.__init__(self, port)
+        SerialPortWifi.__init__(self, port)
         self.logfile = file(filename, "w")
         self.logfile.write("%s\n" % port)
         self.start_time = time.time()
@@ -197,7 +315,7 @@ class SerialPortRecorder(SerialPort):
     def write(self, str):
         """Write (and log) the given string to the port"""
         self.log("write %r" % str)
-        SerialPort.write(self, str)
+        SerialPortWifi.write(self, str)
         return
     
     def read_until_string(self, string):
@@ -206,7 +324,7 @@ class SerialPortRecorder(SerialPort):
         result.  See SerialPort.read_until_string() for details.
         """
         try:
-            result = SerialPort.read_until_string(self, string)
+            result = SerialPortWifi.read_until_string(self, string)
             self.log("read-until %r = %r" % (string, result))
         except exception.Timeout as e:
             if isinstance(e, exception.IntervalTimeout): status = "interval-expired"
@@ -218,7 +336,7 @@ class SerialPortRecorder(SerialPort):
     
     def set_baudrate(self, baud):
         """Set (and log) the serial port baud rate"""
-        SerialPort.set_baudrate(self, baud)
+        SerialPortWifi.set_baudrate(self, baud)
         self.log("set-baud %d" % baud)
         return
     
@@ -226,19 +344,19 @@ class SerialPortRecorder(SerialPort):
         """Set (and log) the timeout and polling interval for read
         operations.  See SerialPort.set_timeout() for details.
         """
-        SerialPort.set_timeout(self, timeout, interval)
+        SerialPortWifi.set_timeout(self, timeout, interval)
         self.log("set-timeout %f %f" % (timeout, self.interval))
         return
 
     def clear_rx_buffer(self):
         """Clear the receive buffer"""
-        SerialPort.clear_rx_buffer(self)
+        SerialPortWifi.clear_rx_buffer(self)
         self.log("clear rx")
         return
     
     def clear_tx_buffer(self):
         """Clear the transmission buffer"""
-        SerialPort.clear_tx_buffer(self)
+        SerialPortWifi.clear_tx_buffer(self)
         self.log("clear tx")
         return
 
@@ -368,5 +486,9 @@ class SerialPortPlayback(SerialPort):
         if buffer != "tx":
             warn("%d: clear %s != tx" % (self.line_number, buffer))
         return
+    
+
+
+
 
 # vim: softtabstop=4 shiftwidth=4 expandtab                                     

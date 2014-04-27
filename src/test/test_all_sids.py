@@ -38,8 +38,11 @@ def get_supported_pids(elm, sid, start_pid):
     supported_pids = range(start_pid + 1, start_pid + 1 + 0x20)
 
     try:
+        print "Sid, pid",sid,start_pid
         responses = elm.send_request(OBDRequest(sid=sid, pid=start_pid))
         support = responses[0]
+        print support
+        print dir(support)
         supported_pids = support.supported_pids
         pids = ",".join(["$%02X" % pid for pid in supported_pids])
         print "supported pids for sid=$%02X pid=$%02X: [%s]" % (sid, start_pid, pids)

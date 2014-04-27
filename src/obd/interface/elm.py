@@ -183,9 +183,7 @@ class ELM32X(Interface):
         try:
             serialport = obd.serialport.SerialPort(identifier)
         except :
-            print("ELMCREATE EXCEPTION") # RKS
-            serialport = odb.serialport.NetPort(identifier)
-        #serialport = obd.serialport.SerialPort(identifier)
+            serialport = obd.serialport.SerialPortWifi(identifier)
         interface = create(serialport, callback)
         return interface
     create = staticmethod(create)
@@ -206,6 +204,7 @@ class ELM32X(Interface):
         # We check the two default baud rates first, then go fastest to
         # slowest, on the theory that anyone who's using a slow baud rate is
         # going to be less picky about the time required to detect it.
+        return 38400 #rks
         bauds = [ 38400, 9600, 230400, 115200, 57600, 19200 ]
 
         for baud in bauds:
@@ -529,7 +528,7 @@ class ELM32X(Interface):
                 raise obd.exception.ProtocolError(raw=line)
             if line.endswith("BUFFER FULL"):
                 untested("buffer overflow")
-                raise BufferOverflowError()
+                raise obd.exception.BufferOverflowError()
 
             if line.find("<DATA ERROR") != -1:
                 untested("frame data error")
